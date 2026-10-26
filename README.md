@@ -1,167 +1,316 @@
-# Multimodal RAG
+# Financial Multimodal RAG --- SEC Filings Intelligence
 
-Multimodal RAG is an open-source retrieval-augmented generation (RAG) pipeline for ingesting documents, images, audio, and video; creating embeddings; storing vectors in Qdrant; and querying multimodal content via a FastAPI backend and Streamlit UI.
----
+A financial-domain Retrieval-Augmented Generation (RAG) application
+designed to help users search and analyze financial documents, including
+SEC filings such as annual reports (10-K) and quarterly reports (10-Q).
+The application combines a FastAPI backend, Streamlit interface, Qdrant
+vector search, and Groq-powered answer generation.
 
-## Table of Contents
-- Quick Start
-- Features
-- Architecture
-- Prerequisites
-- Environment & Configuration
-- Running (local & Docker)
-- Usage
-- Project Structure
-- Screenshots
-- Contributing
-- License
+> **Important:** Answers depend on successful document extraction,
+> indexing, and retrieval. This project supports document review and is
+> not investment, legal, or accounting advice.
 
----
+## Key Features
 
-## Quick Start
-1. Install system prerequisites (Tesseract OCR, FFmpeg). See `SETUP.md` for Windows installers and PATH instructions.
-2. Create a virtual environment and install Python dependencies:
+-   Financial document question answering over uploaded filings.
+-   Intended workflows for SEC Forms 10-K and 10-Q.
+-   Multimodal ingestion where supported by configured processors.
+-   Qdrant vector search for relevant document chunks.
+-   Groq LLM integration using `openai/gpt-oss-120b`.
+-   FastAPI backend for chat, ingestion, and document management.
+-   Streamlit interface for uploads, categories, chat, and source
+    display where supported.
+-   Configurable Top-K, reranking, and citations where supported by the
+    backend.
 
-```bash
-python -m venv .venv
-source .venv/Scripts/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
+## Financial Use Cases
 
-3. Create `.env` in the repository root (example below) and set `OPENAI_API_KEY`.
-4. Run a Qdrant instance (Docker recommended) or configure Qdrant Cloud and update `QDRANT_HOST`.
-5. Launch backend and UI (commands below).
+After relevant filings are successfully ingested and indexed, users can
+ask:
 
-## Features
-- Ingest PDFs, images, audio, and video
-- OCR (Tesseract) and speech transcription
-- Document chunking, embedding generation, and vector storage
-- Vector search powered by Qdrant
-- FastAPI backend with modular API endpoints
-- Streamlit frontend UI for upload + chat
-- Pluggable LLM providers (OpenAI, mock provider)
+-   What was the company's total revenue for fiscal year 2025?
+-   How did revenue and operating income change year over year?
+-   What risk factors did management disclose?
+-   What does the filing report about operating cash flow and capital
+    expenditures?
+-   What debt obligations or liquidity concerns are described?
+
+Answers depend on the content extracted and retrieved. Verify important
+figures against the original filing.
+<img width="1908" height="922" alt="Screenshot 2026-10-26 160121" src="https://github.com/user-attachments/assets/cf2c4e12-797d-4c13-baa3-3ecfd527fc50" />
+<img width="1891" height="917" alt="Screenshot 2026-10-26 160252" src="https://github.com/user-attachments/assets/bd5750f1-6cf6-46d3-9967-2e7565e2f171" />
+
 
 ## Architecture
-High-level architecture and flows are documented in the `ARCHITECTURE.md` file.
 
-See: [ARCHITECTURE.md](ARCHITECTURE.md)
+``` text
+Streamlit UI
+    |
+    v
+FastAPI Backend
+    |
+    +--> Document ingestion --> Text extraction --> Chunking --> Embeddings
+    |                                                       |
+    |                                                       v
+    |                                                   Qdrant
+    |
+    +--> User question --> Query embedding --> Qdrant retrieval
+                                             |
+                                             v
+                                     Retrieved context
+                                             |
+                                             v
+                                  Groq: openai/gpt-oss-120b
+                                             |
+                                             v
+                                      Answer + sources
+```
+
+## Technology Stack
+
+  Component                 Technology
+  ------------------------- -------------------------------------
+  Domain                    Financial documents and SEC filings
+  LLM inference             Groq API
+  Configured LLM            `openai/gpt-oss-120b`
+  Backend                   FastAPI
+  Frontend                  Streamlit
+  Vector database           Qdrant
+  Runtime                   Python
+  Optional infrastructure   Docker
+
+Use the embedding model configured by the project consistently for both
+ingestion and retrieval.
 
 ## Prerequisites
-- Python 3.10+ (virtualenv recommended)
-- Tesseract OCR (for OCR on images/PDFs)
-- FFmpeg (for audio/video processing)
-- Docker (recommended to run Qdrant locally)
 
-Windows installation tips and binary locations are documented in `SETUP.md`.
+-   Python version compatible with `requirements.txt` (Python 3.10+ is a
+    suggested baseline).
+-   Git.
+-   A Groq API key with access to the configured model.
+-   Docker Desktop if running Qdrant locally.
+-   Tesseract OCR and FFmpeg if required by the installed document
+    processors.
 
-## Environment & Configuration
-Create a `.env` file in the repository root. Minimum required keys:
+## Environment Configuration
 
-```
-# Core
-APP_NAME="Multimodal RAG"
+Create a `.env` file in the repository root. Confirm additional required
+settings in `app/core/config.py` and your local configuration.
+
+``` env
+APP_NAME="Financial Multimodal RAG"
 DEBUG=True
 LOG_LEVEL=INFO
 
-# LLM Providers
-OPENAI_API_KEY=sk-...
+# Groq
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
+LLM_BASE_URL=https://api.groq.com/openai/v1
 
-# Vector DB
+# Qdrant
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
-QDRANT_COLLECTION=multimodal_rag
+QDRANT_COLLECTION=rag_collection
 ```
 
-Files of interest:
-- `SETUP.md` — system prerequisites and quick setup
-- `app/main.py` — FastAPI application entrypoint
-- `docker-compose.yaml` — brings up Qdrant + backend + UI (optional)
+-   Replace `your_groq_api_key` with your own key.
+-   Never commit the real `.env` file.
+-   The collection name must match the collection used by both ingestion
+    and retrieval.
+-   Ensure the frontend and backend do not override the configured model
+    with `gpt-3.5-turbo`.
+-   The embedding model is separate from the LLM and must be compatible
+    between indexing and querying.
 
-## Running
+## Installation
 
-### Run Qdrant (Docker)
-Run Qdrant locally with Docker:
+### 1. Clone the repository
 
-```bash
-docker run -p 6333:6333 -p 6334:6334 \
-  -v qdrant_storage:/qdrant/storage \
-  qdrant/qdrant:latest
+``` bash
+git clone https://github.com/shobanjatoth/Multimodal_Rag.git
+cd Multimodal_Rag
 ```
 
-### Backend (FastAPI)
-Start the API server on port `8000`:
+### 2. Create and activate a virtual environment
 
-```bash
+Windows PowerShell:
+
+``` powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### 3. Install dependencies
+
+``` bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Configure `.env`
+
+Add your Groq API key and verify the model and Qdrant settings.
+
+### 5. Start Qdrant
+
+``` powershell
+docker run -d --name rag-qdrant -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage qdrant/qdrant:latest
+```
+
+If a Qdrant container is already running, start that container instead
+of creating a duplicate.
+
+Dashboard: http://localhost:6333/dashboard
+
+## Run Locally
+
+Run the backend and frontend in separate terminals from the repository
+root.
+
+### FastAPI backend
+
+``` bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Health check endpoint:
+API documentation: http://localhost:8000/docs
 
-```bash
-curl http://localhost:8000/health
+Health endpoint, if registered: http://localhost:8000/health
+
+### Streamlit frontend
+
+If your frontend is `ui/app.py`:
+
+``` bash
+streamlit run ui/app.py --server.port 8501
 ```
 
-### Frontend (Streamlit)
-Start the UI on port `8501`:
+If you are using `enterprise_rag_ui_interactive.py` in the repository
+root:
 
-```bash
-streamlit run ui/app.py
+``` bash
+streamlit run enterprise_rag_ui_interactive.py --server.port 8501
 ```
 
-### Docker Compose (All-in-one)
-To run the full stack (Qdrant + backend + UI) using Docker Compose:
+Use the command matching the frontend file in your checkout.
 
-```bash
-docker-compose up --build
+Open: http://localhost:8501
+
+## How to Use
+
+1.  Start Qdrant, FastAPI, and Streamlit.
+2.  Open the Streamlit UI.
+3.  Select or create a category such as `Financial` or `SEC Filings`.
+4.  Upload a supported financial filing.
+5.  Confirm ingestion succeeded and the document is available in the
+    knowledge base.
+6.  Ask a question about the uploaded filing.
+7.  Review the answer and source details when returned by the backend.
+
+## API Documentation
+
+Use the live Swagger UI at http://localhost:8000/docs for the exact
+routes and request schemas registered by your application. Depending on
+router configuration, routes may cover chat, streaming chat,
+conversation history, ingestion, document listing, and deletion.
+
+## Representative Project Structure
+
+Actual paths may differ in your checkout.
+
+``` text
+Multimodal_Rag/
+├── app/
+│   ├── main.py
+│   ├── api/v1/endpoints/
+│   ├── core/config.py
+│   ├── ingestion/
+│   ├── llm/
+│   │   ├── gateway.py
+│   │   ├── conversation_service.py
+│   │   ├── memory/
+│   │   └── providers/
+│   └── retrieval/
+├── ui/
+│   └── app.py
+├── api_client.py
+├── config.py
+├── requirements.txt
+├── .env                 # Local only; do not commit
+├── .gitignore
+└── README.md
 ```
 
-If using Qdrant Cloud or an externally hosted Qdrant, set `QDRANT_HOST` and `QDRANT_PORT` in `.env`.
+## Troubleshooting
 
-## Usage
-1. Open the Streamlit UI at `http://localhost:8501`.
-2. Use the sidebar to upload a PDF, image, audio, or video for ingestion.
-3. Monitor ingestion logs in the backend; when complete, open the chat and ask questions about the uploaded content.
+### Groq returns `model_not_found`
 
-Key server endpoints (see `app/api/v1/endpoints/`):
-- `chat.py` — chat and user queries
-- `documents.py` — list/manage documents
-- `ingestion.py` — trigger ingestion flows
+Check:
 
-## Project Structure (top-level)
-
-```
-app/                  # FastAPI application and routes
-  api/                 # API versioned endpoints
-  core/                # config, logging, middleware
-  models/              # Pydantic models (if present)
-ingestion/            # chunker, processors, ingestion service
-llm/                  # LLM client, embedding & prompt builders
-db/                   # vector store client (Qdrant integration)
-ui/                   # Streamlit frontend
-SETUP.md              # setup and prerequisites (Windows notes)
-ARCHITECTURE.md       # architecture overview
-docker-compose.yaml   # optional all-in-one run
+``` env
+GROQ_MODEL=openai/gpt-oss-120b
+LLM_BASE_URL=https://api.groq.com/openai/v1
 ```
 
-## Screenshots
-Screenshots are excluded per request. If you later want them added, place images in `docs/screenshots/` and tell me filenames — I will insert them into this README.
+Search for outdated defaults in PowerShell:
+
+``` powershell
+Get-ChildItem -Recurse -File -Include *.py,*.env |
+  Select-String -Pattern "gpt-3.5-turbo"
+```
+
+Update active code paths that override the model, then restart FastAPI.
+A commented-out default may not affect runtime behavior, so check which
+setting the gateway actually uses.
+
+### Document listing returns HTTP 500
+
+Inspect the FastAPI traceback and endpoint response body. An empty
+Qdrant collection alone should not normally cause document listing to
+fail; fix the actual backend exception.
+
+### Qdrant contains zero points after upload
+
+Check the ingestion pipeline in order:
+
+1.  Was the file accepted?
+2.  Was its content extracted?
+3.  Were chunks created?
+4.  Did embedding generation succeed?
+5.  Were points inserted into the expected Qdrant collection?
+
+Ensure ingestion and retrieval use the same collection and compatible
+embedding settings.
+
+### No relevant financial information is retrieved
+
+Verify the filing contains the requested year and metric, that relevant
+chunks were indexed, and that filters, Top-K, score thresholds, and
+reranking are not excluding them.
+
+## Security Notes
+
+-   Keep API keys in environment variables; never commit `.env`.
+-   Add `.env`, virtual environments, local databases, and secrets to
+    `.gitignore`.
+-   Follow your organization's data-handling policies for confidential
+    financial information.
+-   Verify important financial figures against the original filing.
 
 ## Contributing
-Contributions are welcome. Suggested workflow:
-1. Fork the repo
-2. Create a feature branch (`feature/your-feature`)
-3. Open a pull request with a description and relevant tests or examples
 
-If you have preferred linters or formatters, note them in a PR description or issue.
+1.  Fork the repository.
+2.  Create a feature branch, for example `feature/financial-retrieval`.
+3.  Make focused changes and test the affected workflows.
+4.  Open a pull request with a clear description and relevant test
+    results.
 
 ## License
-No license is included. This project is provided without a license; reuse and redistribution are not explicitly granted. 
+
+No license has been specified here. Add a `LICENSE` file if you intend
+to grant reuse, modification, or redistribution permissions.
 
 ## Contact
-For questions or help, open an issue or send a message to the project maintainer.
 
----
-
-Notes & To-dos:
-- [ ] Provide any additional docs, example transcripts, or screenshots later.
+Repository: https://github.com/shobanjatoth/Multimodal_Rag
 
